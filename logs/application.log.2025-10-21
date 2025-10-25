@@ -1,0 +1,3 @@
+[ERROR] 2025-10-21 06:11:11,173 line 45, in <module>, session_id=89ed853a00004abababd276dd3340384: 初期化処理に失敗しました。
+'ascii' codec can't encode character '\u201d' in position 171: ordinal not in range(128)
+[INFO] 2025-10-21 22:15:24,769 line 54, in <module>, session_id=dacbfd2e8b5349ebb7e9ef600d74782f: アプリが起動されました。

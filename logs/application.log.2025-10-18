@@ -1,0 +1,68 @@
+[INFO] 2025-10-18 10:10:11,892 line 54, in <module>, session_id=dbc0d9ad1d7f4b36b4c687be8b59f14e: アプリが起動されました。
+[INFO] 2025-10-18 10:10:43,118 line 99, in <module>, session_id=dbc0d9ad1d7f4b36b4c687be8b59f14e: {'message': '社員の育成方針に関するMTGの議事録', 'application_mode': '社内文書検索'}
+[INFO] 2025-10-18 10:10:46,931 line 143, in <module>, session_id=dbc0d9ad1d7f4b36b4c687be8b59f14e: {'message': {'mode': '社内文書検索', 'main_message': '入力内容に関する情報は、以下のファイルに含まれている可能性があります。', 'main_file_path': './data/MTG議事録/教育/教育ミーティング議事録.docx', 'sub_message': 'その他、ファイルありかの候補を提示します。', 'sub_choices': [{'source': './data/MTG議事録/採用/採用ミーティング議事録.docx'}, {'source': './data/MTG議事録/全社/全社ミーティング議事録.docx'}, {'source': './data/MTG議事録/開発/開発ミーティング議事録.docx'}]}, 'application_mode': '社内文書検索'}
+[ERROR] 2025-10-18 10:10:57,935 line 78, in <module>, session_id=dbc0d9ad1d7f4b36b4c687be8b59f14e: 過去の会話履歴の表示に失敗しました。
+name 'llm_response' is not defined
+[ERROR] 2025-10-18 10:11:03,994 line 78, in <module>, session_id=dbc0d9ad1d7f4b36b4c687be8b59f14e: 過去の会話履歴の表示に失敗しました。
+name 'llm_response' is not defined
+[INFO] 2025-10-18 10:11:16,437 line 54, in <module>, session_id=dbc0d9ad1d7f4b36b4c687be8b59f14e: アプリが起動されました。
+[INFO] 2025-10-18 10:11:22,867 line 99, in <module>, session_id=dbc0d9ad1d7f4b36b4c687be8b59f14e: {'message': '人事部に所属している従業員情報を一覧化して', 'application_mode': '社内問い合わせ'}
+[INFO] 2025-10-18 10:11:30,660 line 143, in <module>, session_id=dbc0d9ad1d7f4b36b4c687be8b59f14e: {'message': {'mode': '社内問い合わせ', 'answer': '### 人事部に所属している従業員情報\n\n| 社員ID   | 氏名（フルネーム） | 性別 | 生年月日   | 年齢 | メールアドレス            | 従業員区分 | 入社日       | 役職       | スキルセット                                    | 保有資格              | 大学名       | 学部・学科   | 卒業年月日   |\n|----------|--------------------|------|------------|------|---------------------------|-------------|--------------|------------|-------------------------------------------------|-----------------------|--------------|--------------|--------------|\n| EMP0036  | 山本 七夏          | 女性 | 1966-12-17 | 59   | nanami50@example.com      | アルバイト  | 2020-01-07   | マネージャー | PowerPoint, リーダーシップ, 語学力, クラウドコンピューティング, ネットワーク構築 | プロジェクトマネージャ, 簿記2級 | 上智大学     | 経済学部     | 2013-04-01   |', 'message': '情報源', 'file_info_list': ['./data/MTG議事録/採用/採用ミーティング議事録.docx', './data/社員について/社員名簿.csv']}, 'application_mode': '社内問い合わせ'}
+[INFO] 2025-10-18 10:13:52,146 line 99, in <module>, session_id=dbc0d9ad1d7f4b36b4c687be8b59f14e: {'message': '株式会社', 'application_mode': '社内文書検索'}
+[INFO] 2025-10-18 10:13:57,905 line 143, in <module>, session_id=dbc0d9ad1d7f4b36b4c687be8b59f14e: {'message': {'mode': '社内文書検索', 'answer': '\n    入力内容と関連する社内文書が見つかりませんでした。\n\n    入力内容を変更してください。\n', 'no_file_path_flg': True}, 'application_mode': '社内文書検索'}
+[INFO] 2025-10-18 10:14:08,373 line 99, in <module>, session_id=dbc0d9ad1d7f4b36b4c687be8b59f14e: {'message': 'ecoTeeの', 'application_mode': '社内文書検索'}
+[INFO] 2025-10-18 10:14:10,092 line 143, in <module>, session_id=dbc0d9ad1d7f4b36b4c687be8b59f14e: {'message': {'mode': '社内文書検索', 'answer': '\n    入力内容と関連する社内文書が見つかりませんでした。\n\n    入力内容を変更してください。\n', 'no_file_path_flg': True}, 'application_mode': '社内文書検索'}
+[INFO] 2025-10-18 10:14:26,566 line 99, in <module>, session_id=dbc0d9ad1d7f4b36b4c687be8b59f14e: {'message': 'ecoTeeの株主優待情報の', 'application_mode': '社内文書検索'}
+[INFO] 2025-10-18 10:14:30,607 line 143, in <module>, session_id=dbc0d9ad1d7f4b36b4c687be8b59f14e: {'message': {'mode': '社内文書検索', 'main_message': '入力内容に関する情報は、以下のファイルに含まれている可能性があります。', 'main_file_path': './data/会社について/株主優待について.pdf', 'main_page_number': 0, 'sub_message': 'その他、ファイルありかの候補を提示します。', 'sub_choices': [{'source': './data/会社について/会社概要.pdf', 'page_number': 0}, {'source': './data/サービスについて/デザインに関すること.pdf', 'page_number': 2}]}, 'application_mode': '社内文書検索'}
+[ERROR] 2025-10-18 10:14:40,855 line 78, in <module>, session_id=dbc0d9ad1d7f4b36b4c687be8b59f14e: 過去の会話履歴の表示に失敗しました。
+name 'llm_response' is not defined
+[ERROR] 2025-10-18 10:14:53,119 line 78, in <module>, session_id=dbc0d9ad1d7f4b36b4c687be8b59f14e: 過去の会話履歴の表示に失敗しました。
+name 'llm_response' is not defined
+[ERROR] 2025-10-18 10:14:54,027 line 78, in <module>, session_id=dbc0d9ad1d7f4b36b4c687be8b59f14e: 過去の会話履歴の表示に失敗しました。
+name 'llm_response' is not defined
+[INFO] 2025-10-18 10:15:05,431 line 54, in <module>, session_id=dbc0d9ad1d7f4b36b4c687be8b59f14e: アプリが起動されました。
+[INFO] 2025-10-18 10:18:05,507 line 99, in <module>, session_id=dbc0d9ad1d7f4b36b4c687be8b59f14e: {'message': 'ecoTreeの', 'application_mode': '社内文書検索'}
+[INFO] 2025-10-18 10:18:07,475 line 143, in <module>, session_id=dbc0d9ad1d7f4b36b4c687be8b59f14e: {'message': {'mode': '社内文書検索', 'answer': '\n    入力内容と関連する社内文書が見つかりませんでした。\n\n    入力内容を変更してください。\n', 'no_file_path_flg': True}, 'application_mode': '社内文書検索'}
+[INFO] 2025-10-18 10:19:25,138 line 99, in <module>, session_id=dbc0d9ad1d7f4b36b4c687be8b59f14e: {'message': 'ecoTreの株主優待の内容を教えて', 'application_mode': '社内文書検索'}
+[INFO] 2025-10-18 10:19:28,426 line 143, in <module>, session_id=dbc0d9ad1d7f4b36b4c687be8b59f14e: {'message': {'mode': '社内文書検索', 'main_message': '入力内容に関する情報は、以下のファイルに含まれている可能性があります。', 'main_file_path': './data/会社について/株主優待について.pdf', 'main_page_number': 0}, 'application_mode': '社内文書検索'}
+[ERROR] 2025-10-18 10:36:19,677 line 78, in <module>, session_id=dbc0d9ad1d7f4b36b4c687be8b59f14e: 過去の会話履歴の表示に失敗しました。
+name 'main_file_path' is not defined
+[INFO] 2025-10-18 10:36:37,442 line 54, in <module>, session_id=dbc0d9ad1d7f4b36b4c687be8b59f14e: アプリが起動されました。
+[INFO] 2025-10-18 10:36:43,645 line 99, in <module>, session_id=dbc0d9ad1d7f4b36b4c687be8b59f14e: {'message': 'ecoTreの株主優待の内容を教えて', 'application_mode': '社内文書検索'}
+[INFO] 2025-10-18 10:36:46,557 line 143, in <module>, session_id=dbc0d9ad1d7f4b36b4c687be8b59f14e: {'message': {'mode': '社内文書検索', 'main_message': '入力内容に関する情報は、以下のファイルに含まれている可能性があります。', 'main_file_path': './data/会社について/株主優待について.pdf', 'main_page_number': 0, 'sub_message': 'その他、ファイルありかの候補を提示します。', 'sub_choices': [{'source': './data/顧客について/お客様情報.pdf', 'page_number': 3}]}, 'application_mode': '社内文書検索'}
+[INFO] 2025-10-18 10:56:13,682 line 54, in <module>, session_id=dbc0d9ad1d7f4b36b4c687be8b59f14e: アプリが起動されました。
+[INFO] 2025-10-18 10:56:16,698 line 99, in <module>, session_id=dbc0d9ad1d7f4b36b4c687be8b59f14e: {'message': 'ecoTreの株主優待の内容を教えて', 'application_mode': '社内文書検索'}
+[INFO] 2025-10-18 10:56:18,863 line 143, in <module>, session_id=dbc0d9ad1d7f4b36b4c687be8b59f14e: {'message': {'mode': '社内文書検索', 'main_message': '入力内容に関する情報は、以下のファイルに含まれている可能性があります。', 'main_file_path': './data/会社について/株主優待について.pdf', 'main_page_number': 0, 'sub_message': 'その他、ファイルありかの候補を提示します。', 'sub_choices': [{'source': './data/顧客について/お客様情報.pdf', 'page_number': 3}]}, 'application_mode': '社内文書検索'}
+[INFO] 2025-10-18 11:03:33,103 line 54, in <module>, session_id=dbc0d9ad1d7f4b36b4c687be8b59f14e: アプリが起動されました。
+[INFO] 2025-10-18 11:03:38,559 line 99, in <module>, session_id=dbc0d9ad1d7f4b36b4c687be8b59f14e: {'message': 'ecoTreの株主優待の内容を教えて', 'application_mode': '社内文書検索'}
+[INFO] 2025-10-18 11:03:40,766 line 143, in <module>, session_id=dbc0d9ad1d7f4b36b4c687be8b59f14e: {'message': {'mode': '社内文書検索', 'main_message': '入力内容に関する情報は、以下のファイルに含まれている可能性があります。', 'main_file_path': './data/会社について/株主優待について.pdf', 'main_page_number': 0, 'sub_message': 'その他、ファイルありかの候補を提示します。', 'sub_choices': [{'source': './data/顧客について/お客様情報.pdf', 'page_number': 3}]}, 'application_mode': '社内文書検索'}
+[ERROR] 2025-10-18 11:08:03,849 line 45, in <module>, session_id=50f503505ffd403f8a722efb4b2ffe0b: 初期化処理に失敗しました。
+pypdf package not found, please install it with `pip install pypdf`
+[ERROR] 2025-10-18 11:10:53,260 line 45, in <module>, session_id=9e2e57c9f9ab41ce8e8575fa39d08ce5: 初期化処理に失敗しました。
+pypdf package not found, please install it with `pip install pypdf`
+[ERROR] 2025-10-18 11:11:31,155 line 45, in <module>, session_id=5ba3244fe043462eb8306e9fd4dca32e: 初期化処理に失敗しました。
+pypdf package not found, please install it with `pip install pypdf`
+[ERROR] 2025-10-18 13:16:30,516 line 45, in <module>, session_id=9ebf0bb615be4392aa2d400341ae6d95: 初期化処理に失敗しました。
+pypdf package not found, please install it with `pip install pypdf`
+[ERROR] 2025-10-18 14:23:40,931 line 45, in <module>, session_id=55cc6b9816a24358aca1f1ebde519efb: 初期化処理に失敗しました。
+pypdf package not found, please install it with `pip install pypdf`
+[ERROR] 2025-10-18 14:24:32,019 line 45, in <module>, session_id=2917d9230e204baeb4f5962876f8343c: 初期化処理に失敗しました。
+pypdf package not found, please install it with `pip install pypdf`
+[ERROR] 2025-10-18 14:31:15,211 line 45, in <module>, session_id=ae5a1e721e904340a5f3c5897f509735: 初期化処理に失敗しました。
+pypdf package not found, please install it with `pip install pypdf`
+[INFO] 2025-10-18 15:25:53,324 line 54, in <module>, session_id=d9b5ae9a1815487092b420a38503271d: アプリが起動されました。
+[INFO] 2025-10-18 15:26:01,546 line 99, in <module>, session_id=d9b5ae9a1815487092b420a38503271d: {'message': '社員の育成方針に関するMTGの議事録', 'application_mode': '社内文書検索'}
+[INFO] 2025-10-18 15:26:04,199 line 143, in <module>, session_id=d9b5ae9a1815487092b420a38503271d: {'message': {'mode': '社内文書検索', 'main_message': '入力内容に関する情報は、以下のファイルに含まれている可能性があります。', 'main_file_path': './data/MTG議事録/教育/教育ミーティング議事録.docx', 'sub_message': 'その他、ファイルありかの候補を提示します。', 'sub_choices': [{'source': './data/MTG議事録/採用/採用ミーティング議事録.docx'}, {'source': './data/MTG議事録/全社/全社ミーティング議事録.docx'}, {'source': './data/MTG議事録/開発/開発ミーティング議事録.docx'}]}, 'application_mode': '社内文書検索'}
+[INFO] 2025-10-18 15:26:13,161 line 99, in <module>, session_id=d9b5ae9a1815487092b420a38503271d: {'message': '人事部に所属している従業員情報を一覧化して', 'application_mode': '社内文書検索'}
+[INFO] 2025-10-18 15:26:19,934 line 143, in <module>, session_id=d9b5ae9a1815487092b420a38503271d: {'message': {'mode': '社内文書検索', 'answer': '\n    入力内容と関連する社内文書が見つかりませんでした。\n\n    入力内容を変更してください。\n', 'no_file_path_flg': True}, 'application_mode': '社内文書検索'}
+[INFO] 2025-10-18 15:26:24,837 line 99, in <module>, session_id=d9b5ae9a1815487092b420a38503271d: {'message': '人事部に所属している従業員情報を一覧化して', 'application_mode': '社内問い合わせ'}
+[INFO] 2025-10-18 15:26:37,832 line 143, in <module>, session_id=d9b5ae9a1815487092b420a38503271d: {'message': {'mode': '社内問い合わせ', 'answer': '### 人事部に所属している従業員情報\n\n| 社員ID | 氏名（フルネーム） | 性別 | 生年月日 | 年齢 | メールアドレス               | 従業員区分 | 入社日       | 役職     | スキルセット                                      | 保有資格                       | 大学名     | 学部・学科     | 卒業年月日   |\n|--------|---------------------|------|----------|------|------------------------------|-------------|--------------|----------|--------------------------------------------------|--------------------------------|------------|----------------|--------------|\n| EMP0036 | 山本 七夏           | 女性 | 1966-12-17 | 59   | nanami50@example.com         | アルバイト | 2020-01-07   | マネージャー | PowerPoint, リーダーシップ, 語学力, クラウドコンピューティング, ネットワーク構築 | プロジェクトマネージャ, 簿記2級 | 上智大学   | 経済学部       | 2013-04-01   |\n| EMP0047 | 林 千代             | 女性 | 1999-07-16 | 26   | yumiko77@example.com         | インターン   | 2021-05-22   | スタッフ   | PowerPoint, Java, プロジェクト管理, プロジェクト管理 | AWS認定ソリューションアーキテクト, Salesforce認定アドミニストレーター | 筑波大学   | 経済学部       | 2009-12-05   |\n\nこの表は人事部に所属している従業員の情報を一覧化したものです。', 'message': '情報源', 'file_info_list': ['./data/社員について/社員名簿.csv']}, 'application_mode': '社内問い合わせ'}
+[INFO] 2025-10-18 15:26:51,963 line 99, in <module>, session_id=d9b5ae9a1815487092b420a38503271d: {'message': '営業部に所属しているのは？', 'application_mode': '社内問い合わせ'}
+[INFO] 2025-10-18 15:26:54,071 line 143, in <module>, session_id=d9b5ae9a1815487092b420a38503271d: {'message': {'mode': '社内問い合わせ', 'answer': '回答に必要な情報が見つかりませんでした。'}, 'application_mode': '社内問い合わせ'}
+[INFO] 2025-10-18 19:18:17,149 line 54, in <module>, session_id=f0a649dbae7546d89770291186ed923a: アプリが起動されました。
+[ERROR] 2025-10-18 22:04:43,196 line 45, in <module>, session_id=c9eb5a55d864409184584fa2de97d96a: 初期化処理に失敗しました。
+The api_key client option must be set either by passing api_key to the client or by setting the OPENAI_API_KEY environment variable
+[ERROR] 2025-10-18 22:14:23,130 line 45, in <module>, session_id=b9673a881e444bb2aacb4372b0f840e4: 初期化処理に失敗しました。
+'ascii' codec can't encode character '\u201d' in position 171: ordinal not in range(128)
+[ERROR] 2025-10-18 22:16:49,843 line 45, in <module>, session_id=72a802da01da40d1a356351b58ae0c7b: 初期化処理に失敗しました。
+'ascii' codec can't encode character '\u201d' in position 171: ordinal not in range(128)

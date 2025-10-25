@@ -1,0 +1,14 @@
+streamlit==1.41.1
+python-dotenv
+langchain==0.3.15
+langchain-community==0.3.15
+langchain-openai==0.2.6
+langchain-text-splitters==0.3.11
+chromadb==0.5.11
+pypdf
+docx2txt
+python-docx==1.1.2
+lxml==5.3.0
+beautifulsoup4
+requests
+html5lib
