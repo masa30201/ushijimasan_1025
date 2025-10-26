@@ -19,6 +19,7 @@ from langchain_openai import OpenAIEmbeddings
 from langchain_community.vectorstores import Chroma
 import constants as ct
 
+
 ############################################################
 # 設定関連
 ############################################################
@@ -26,9 +27,12 @@ import constants as ct
 load_dotenv()
 
 # trafilatura(WebBaseLoader内部)向けのUSER_AGENTを標準で設定
-os.environ.setdefault("USER_AGENT", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Streamlit/1.x")
+os.environ.setdefault(
+    "USER_AGENT",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Streamlit/1.x"
+)
 
-# Streamlit Secrets が無い/構造が違っても落ちない安全ラッパー
+
 def _get_secret_safe(key: str):
     """secrets.toml が無い・構造が異なる環境でも落ちない安全ラッパー"""
     try:
@@ -42,6 +46,7 @@ def _get_secret_safe(key: str):
             return None
         return None
 
+
 def ensure_openai_key():
     """
     OPENAI_API_KEY を .env → Streamlit Secrets の順で探し、
@@ -54,10 +59,10 @@ def ensure_openai_key():
         )
     os.environ["OPENAI_API_KEY"] = key
 
+
 ############################################################
 # 関数定義
 ############################################################
-
 def initialize():
     """
     画面読み込み時に実行する初期化処理
@@ -82,25 +87,39 @@ def initialize_logger():
     """
     # 指定のログフォルダが存在すれば読み込み、存在しなければ新規作成
     os.makedirs(ct.LOG_DIR_PATH, exist_ok=True)
-    
+
     # 引数に指定した名前のロガー（ログを記録するオブジェクト）を取得
     # 再度別の箇所で呼び出した場合、すでに同じ名前のロガーが存在していれば読み込む
     logger = logging.getLogger(ct.LOGGER_NAME)
 
-    # すでにロガーにハンドラー（ログの出力先を制御するもの）が設定されている場合、同じログ出力が複数回行われないよう処理を中断する
+    # すでにロガーにハンドラー（ログの出力先を制御するもの）が設定されている場合、
+    # 同じログ出力が複数回行われないよう処理を中断する
     if logger.hasHandlers():
         return
 
-    # 1日単位でログファイルの中身をリセットし、切り替える設定
+    # 1日単位でログファイルの中身をローテーションし、切り替える設定
     log_handler = TimedRotatingFileHandler(
         os.path.join(ct.LOG_DIR_PATH, ct.LOG_FILE),
         when="D",
         encoding="utf8"
     )
+
     # 出力するログメッセージのフォーマット定義
+    # session_id は Filter で record に注入する
     formatter = logging.Formatter(
-        f"[%(levelname)s] %(asctime)s line %(lineno)s, in %(funcName)s, session_id={st.session_state.session_id}: %(message)s"
+        (
+            "[%(levelname)s] %(asctime)s line %(lineno)s, in %(funcName)s, "
+            "session_id=%(session_id)s: %(message)s"
+        )
     )
+
+    # StreamlitのセッションIDをログレコードに注入するFilter
+    class SessionIdFilter(logging.Filter):
+        def filter(self, record):
+            record.session_id = getattr(st.session_state, "session_id", "N/A")
+            return True
+
+    log_handler.addFilter(SessionIdFilter())
 
     # 定義したフォーマッターの適用
     log_handler.setFormatter(formatter)
@@ -122,16 +141,19 @@ def initialize_session_id():
         st.session_state.session_id = uuid4().hex
 
 
-def initialize_retriever():
+@st.cache_resource(show_spinner="検索用データを準備中...")
+def build_retriever_once():
     """
-    画面読み込み時にRAGのRetriever（ベクターストアから検索するオブジェクト）を作成
+    RAG用のRetrieverを1プロセスにつき1回だけ重く初期化し、キャッシュして返す。
+
+    - data/ 配下と指定Webページからドキュメントを読み込み
+    - 文字コードなどの正規化
+    - OpenAIEmbeddings で埋め込みベクトルを生成
+    - Chroma ベクターストアを構築
+    - Retriever を返却
     """
     logger = logging.getLogger(ct.LOGGER_NAME)
 
-    # すでにRetrieverが作成済みの場合、後続の処理を中断
-    if "retriever" in st.session_state:
-        return
-    
     # RAGの参照先となるデータソースの読み込み
     docs_all = load_data_sources()
 
@@ -140,11 +162,11 @@ def initialize_retriever():
         doc.page_content = adjust_string(doc.page_content)
         for key in list(doc.metadata.keys()):
             doc.metadata[key] = adjust_string(doc.metadata[key])
-    
+
     try:
         # 埋め込みモデルの用意
         embeddings = OpenAIEmbeddings()
-        
+
         # チャンク分割用のオブジェクトを作成
         text_splitter = CharacterTextSplitter(
             chunk_size=ct.CHUNK_SIZE,
@@ -158,12 +180,29 @@ def initialize_retriever():
         # ベクターストアの作成
         db = Chroma.from_documents(splitted_docs, embedding=embeddings)
 
-        # ベクターストアを検索するRetrieverの作成
-        st.session_state.retriever = db.as_retriever(search_kwargs={"k": ct.RETRIEVER_K})
+        # ベクターストアを検索するRetrieverを作成
+        retriever = db.as_retriever(search_kwargs={"k": ct.RETRIEVER_K})
+
+        return retriever
+
     except Exception as e:
         logger.error(f"ベクターストア初期化失敗: {e}")
-        # ここでは従来挙動どおり停止させる（上位でハンドリング）
+        # キャッシュの初期化段階で失敗した場合は上位に伝える
         raise
+
+
+def initialize_retriever():
+    """
+    画面読み込み時にRAGのRetriever（ベクターストアから検索するオブジェクト）を
+    session_state に紐づける。
+    """
+    # すでにRetrieverがセッションに存在する場合は何もしない
+    if "retriever" in st.session_state:
+        return
+
+    # キャッシュ済み（もしくは今回初回作成）のRetrieverを取得し、
+    # このセッションの session_state に貼り付ける
+    st.session_state.retriever = build_retriever_once()
 
 
 def initialize_session_state():
@@ -182,17 +221,18 @@ def load_data_sources():
     RAGの参照先となるデータソースの読み込み
 
     Returns:
-        読み込んだ通常データソース
+        読み込んだすべてのドキュメント（ファイル＋Web）
     """
     logger = logging.getLogger(ct.LOGGER_NAME)
 
     # データソースを格納する用のリスト
     docs_all = []
-    # ファイル読み込みの実行（渡した各リストにデータが格納される）
+
+    # ローカルのファイル群を読み込み（再帰的に走査）
     recursive_file_check(ct.RAG_TOP_FOLDER_PATH, docs_all)
 
+    # ---- Webページ読み込み ----
     web_docs_all = []
-    # ファイルとは別に、指定のWebページ内のデータも読み込み
     for web_url in ct.WEB_URL_LOAD_TARGETS:
         try:
             loader = WebBaseLoader(web_url)
@@ -211,7 +251,7 @@ def load_data_sources():
 
 def recursive_file_check(path, docs_all):
     """
-    RAGの参照先となるデータソースの読み込み
+    RAGの参照先となるデータソースの読み込み（再帰的にディレクトリをたどる）
 
     Args:
         path: 読み込み対象のファイル/フォルダのパス
