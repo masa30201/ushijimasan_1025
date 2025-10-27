@@ -22,6 +22,10 @@ import constants as ct
 load_dotenv()
 
 
+############################################################
+# UI用の小さいユーティリティ
+############################################################
+
 def get_source_icon(source: str):
     """
     メッセージと一緒に表示するアイコンの種類を取得
@@ -56,28 +60,30 @@ def _update_chat_history(user_text: str, ai_text: str):
         logger.warning("chat_history 更新に失敗しました: %s", e)
 
 
+############################################################
+# コア: LLM応答生成
+############################################################
+
 def get_llm_response(chat_message: str):
     """
     ユーザー入力(chat_message)に対する回答を生成する。
 
-    両モードとも RAG（ベクターストア検索 + 参照文書をLLMに渡す）を使う。
-    ただし、LLMに渡すシステムプロンプトはモードによって切り替える。
+    モード別のふるまい:
+    - ANSWER_MODE_1（社内文書検索モード）
+        → ベクターストア検索(RAG) + 社内文書ベースの回答
+        → ct.SYSTEM_PROMPT_DOC_SEARCH を使う
+    - ANSWER_MODE_2（社内問い合わせモード）
+        → ベクターストアを使わず、LLM単体で回答
+        → ct.SYSTEM_PROMPT_INQUIRY を使う
 
-    - ANSWER_MODE_1（社内文書検索）:
-        ct.SYSTEM_PROMPT_DOC_SEARCH を使う
-        → ファイル候補や根拠の提示に向いたスタイル
-    - ANSWER_MODE_2（社内問い合わせ）:
-        ct.SYSTEM_PROMPT_INQUIRY を使う
-        → 社内問い合わせの回答トーン・方針に向いたスタイル
-
-    返り値は常に:
+    戻り値は常に:
         {
-            "answer": "...",       # LLMの最終回答 or エラーメッセージ
-            "context": [Document, ...]  # retrieverが返したドキュメントのリスト（なければ空）
+            "answer": "<LLM回答 or エラーメッセージ>",
+            "context": [Document(...), ...]  # 問い合わせモードでは基本 []
         }
 
-    どんな場合も raise はしない。必ず上の dict を返す。
-    main.py 側はこの dict を前提に表示・ログ保存する。
+    ※ どんな場合でも raise はしない。
+      main.py 側が try/except しなくても落ちないように、ここで握りつぶして answer に埋め込む。
     """
 
     logger = logging.getLogger(ct.LOGGER_NAME)
@@ -104,19 +110,55 @@ def get_llm_response(chat_message: str):
             "context": [],
         }
 
-    # 1. いまのモードを取得（サイドバーのラジオで選ばれている想定）
+    # 1. モード取得
     mode = getattr(st.session_state, "mode", ct.ANSWER_MODE_1)
 
-    # 2. プロンプトをモード別に組み立てる
-    #    - 「どんなふうに答えるべきか」を決める system プロンプトだけ差し替えるイメージ
+    # =====================================================
+    # モードB: 社内問い合わせ（RAGなしでLLMに直接聞く）
+    # =====================================================
     if mode == ct.ANSWER_MODE_2:
-        # 社内問い合わせモード
-        answer_system_prompt_text = ct.SYSTEM_PROMPT_INQUIRY
-    else:
-        # デフォルトは社内文書検索モード扱い
-        answer_system_prompt_text = ct.SYSTEM_PROMPT_DOC_SEARCH
+        # ここでは Chroma / retriever に一切触らない。
+        # → これで「no such table: collections」から完全に解放される。
 
-    # 会話履歴を踏まえた検索クエリを作るためのプロンプト
+        inquiry_prompt = ChatPromptTemplate.from_messages(
+            [
+                ("system", ct.SYSTEM_PROMPT_INQUIRY),
+                MessagesPlaceholder("chat_history"),
+                ("human", "{input}"),
+            ]
+        )
+
+        # ChatPromptTemplateを実際のメッセージ列に展開
+        messages_for_llm = inquiry_prompt.format_messages(
+            input=chat_message,
+            chat_history=st.session_state.chat_history,
+        )
+
+        try:
+            ai_message = llm.invoke(messages_for_llm)
+            answer_text = ai_message.content
+        except Exception as e:
+            answer_text = (
+                "【LLM呼び出しでエラーが発生しました（社内問い合わせモード）】\n"
+                "モデル呼び出し時にエラーが発生しました。\n"
+                "考えられる原因:\n"
+                " - ct.MODEL のモデル名/権限の問題\n"
+                " - APIキーの制限やレート制限\n\n"
+                f"詳細:\n{e}"
+            )
+
+        _update_chat_history(chat_message, answer_text)
+
+        return {
+            "answer": answer_text,
+            "context": [],
+        }
+
+    # =====================================================
+    # モードA: 社内文書検索（RAGあり）
+    # =====================================================
+
+    # 会話履歴を踏まえて検索クエリを作るプロンプト
     contextualize_q_prompt = ChatPromptTemplate.from_messages(
         [
             ("system", ct.SYSTEM_PROMPT_CREATE_INDEPENDENT_TEXT),
@@ -125,16 +167,16 @@ def get_llm_response(chat_message: str):
         ]
     )
 
-    # LLMに最終回答をまとめさせるプロンプト
+    # 社内文書検索向けの回答プロンプト
     question_answer_prompt = ChatPromptTemplate.from_messages(
         [
-            ("system", answer_system_prompt_text),
+            ("system", ct.SYSTEM_PROMPT_DOC_SEARCH),
             MessagesPlaceholder("chat_history"),
             ("human", "{input}"),
         ]
     )
 
-    # 3. Retriever（Chromaなど）を、会話履歴込みで使えるようにする
+    # 会話履歴込みの Retriever を組み立てる
     try:
         history_aware_retriever = create_history_aware_retriever(
             llm=llm,
@@ -156,19 +198,19 @@ def get_llm_response(chat_message: str):
             "context": [],
         }
 
-    # 4. ドキュメントをまとめて最終回答を作るチェーン
+    # 取得したドキュメントをもとに回答をまとめるチェーン
     question_answer_chain = create_stuff_documents_chain(
         llm=llm,
         prompt=question_answer_prompt,
     )
 
-    # 5. 「(履歴付き)Retriever」→「回答生成」のRAGチェーンを組む
+    # Retriever→回答生成 というRAGチェーンを作る
     rag_chain = create_retrieval_chain(
         history_aware_retriever,
         question_answer_chain,
     )
 
-    # 6. 実際にRAGチェーンを呼び出して回答を作る
+    # 実行（Chromaに問い合わせ、OpenAIで回答生成）
     try:
         result = rag_chain.invoke(
             {
@@ -176,9 +218,9 @@ def get_llm_response(chat_message: str):
                 "chat_history": st.session_state.chat_history,
             }
         )
-        # LangChainのcreate_retrieval_chain()はだいたい:
+        # 期待形:
         # {
-        #   "answer": "...LLMの最終回答テキスト...",
+        #   "answer": "...LLM回答...",
         #   "context": [Document(...), ...]
         # }
         answer_text = result.get("answer", "")
@@ -186,7 +228,6 @@ def get_llm_response(chat_message: str):
         return result
 
     except Exception as e:
-        # retriever呼び出しやOpenAI呼び出しで落ちた場合
         debug_answer = (
             "【LLM呼び出しでエラーが発生しました】\n"
             "内部の検索または回答生成処理でエラーが発生しました。\n"
@@ -202,6 +243,10 @@ def get_llm_response(chat_message: str):
             "context": [],
         }
 
+
+############################################################
+# 表示用の補助（ファイルパスとページ番号を見やすくする）
+############################################################
 
 def format_file_info(path: str, page_number: Optional[int] = None) -> str:
     """
