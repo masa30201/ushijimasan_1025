@@ -95,29 +95,55 @@ def get_llm_response(chat_message: str):
     - ANSWER_MODE_2（社内問い合わせ）:
         RAGを使わず、LLMのみで回答を作る（contextは空）
 
-    Returns:
-        dict:
-            {
-                "answer": "...回答テキスト...",
-                "context": [Document(...), ...]  # or []
-            }
-        components.py / main.py はこの形式を前提にしている
+    返り値の形式は共通で、
+        {
+            "answer": "...",
+            "context": [Document(...), ...]  # or []
+        }
+    を返す。
+    components.py / main.py はこの形式を前提にしている。
     """
 
     logger = logging.getLogger(ct.LOGGER_NAME)
 
-    # LLM本体を用意
-    # langchain-openai>=0.2系では model_name ではなく model を使う
-    llm = ChatOpenAI(
-        model=ct.MODEL,
-        temperature=ct.TEMPERATURE,
-    )
+    # -----------------------------------------------------
+    # 0. LLMインスタンスを準備（ここも例外になることがあるので try で囲む）
+    #    - APIキー未設定
+    #    - モデル名が不正・権限なし
+    #    - pydanticバリデーションエラー 等
+    # -----------------------------------------------------
+    try:
+        llm = ChatOpenAI(
+            model=ct.MODEL,            # langchain-openai>=0.2系では model_name ではなく model
+            temperature=ct.TEMPERATURE,
+        )
+    except Exception as e:
+        debug_answer = (
+            "【LLM初期化エラー】\n"
+            "ChatOpenAI の初期化に失敗しました。\n"
+            f"詳細: {e}\n\n"
+            "考えられる原因:\n"
+            " - OPENAI_API_KEY が読み込まれていない\n"
+            " - ct.MODEL のモデル名がこのAPIキーで使えない\n"
+            " - モデル名のタイプミス\n"
+        )
+        _update_chat_history(chat_message, debug_answer)
+        return {
+            "answer": debug_answer,
+            "context": [],
+        }
 
-    # どのモードで呼ばれたかによって処理を分岐
-    if st.session_state.mode == ct.ANSWER_MODE_1:
-        # ==========================
+    # いまのモード（initialize.py / main.py 側で設定済みのはず）
+    mode = getattr(st.session_state, "mode", ct.ANSWER_MODE_1)
+
+    # -----------------------------------------------------
+    # モード分岐
+    # -----------------------------------------------------
+
+    if mode == ct.ANSWER_MODE_1:
+        # =================================================
         # 社内文書検索 (RAGあり)
-        # ==========================
+        # =================================================
 
         # 1. 会話履歴を踏まえた検索クエリを作るためのプロンプト
         contextualize_q_prompt = ChatPromptTemplate.from_messages(
@@ -128,144 +154,24 @@ def get_llm_response(chat_message: str):
             ]
         )
 
-        # 2. 会話履歴を考慮した Retriever を組み立てる
-        history_aware_retriever = create_history_aware_retriever(
-            llm=llm,
-            retriever=st.session_state.retriever,  # initialize.pyで用意/キャッシュ済みのやつ
-            prompt=contextualize_q_prompt,
-        )
-
-        # 3. 実際の回答を作るためのプロンプト（ドキュメントを根拠に回答する想定）
-        question_answer_prompt = ChatPromptTemplate.from_messages(
-            [
-                ("system", ct.SYSTEM_PROMPT_DOC_SEARCH),
-                MessagesPlaceholder("chat_history"),
-                ("human", "{input}"),
-            ]
-        )
-
-        # 4. ドキュメント群をまとめて最終回答を作るチェーン
-        question_answer_chain = create_stuff_documents_chain(
-            llm=llm,
-            prompt=question_answer_prompt,
-        )
-
-        # 5. 「履歴込みRetriever」→「回答生成」のRAGチェーン
-        rag_chain = create_retrieval_chain(
-            history_aware_retriever,
-            question_answer_chain,
-        )
-
-        # 6. 実行
+        # 2. Retriever を会話履歴込みにするチェーン
+        #    ここではまだ retriever を実行しないので
+        #    Chroma 内部の "no such table" は起きないはず
         try:
-            result = rag_chain.invoke(
-                {
-                    "input": chat_message,
-                    "chat_history": st.session_state.chat_history,
-                }
+            history_aware_retriever = create_history_aware_retriever(
+                llm=llm,
+                retriever=st.session_state.retriever,
+                prompt=contextualize_q_prompt,
             )
-            # result 例:
-            # {
-            #   "answer": "〜モデルの回答〜",
-            #   "context": [Document(...), ...]
-            # }
-
-            answer_text = result.get("answer", "")
-            _update_chat_history(chat_message, answer_text)
-            return result
-
         except Exception as e:
-            # RAG経由での回答生成に失敗した場合は
-            # ユーザー側にもエラー内容を可視化して返す
-            logger.error(f"[RAGモード] LLM呼び出しに失敗しました: {e}")
-
             debug_answer = (
-                "【LLM呼び出しでエラーが発生しました（RAGモード）】\n"
-                "内部の検索または回答生成処理でエラーが発生しました。\n"
+                "【RAG初期化エラー】\n"
+                "履歴付きRetrieverの構築に失敗しました。\n"
                 f"詳細: {e}\n\n"
                 "考えられる原因:\n"
-                " - ベクターストアの内部エラー / 破損\n"
-                " - モデル呼び出しの権限・レート制限\n"
-                " - LangChain/Chromaのバージョン差異による不整合\n"
+                " - ベクターストア(retriever)が壊れている/未初期化\n"
+                " - Chromaの永続ディレクトリが壊れた\n"
             )
-
             _update_chat_history(chat_message, debug_answer)
-
             return {
-                "answer": debug_answer,
-                "context": [],
-            }
-
-    else:
-        # ==========================
-        # 社内問い合わせ (RAGなし)
-        # ==========================
-        #
-        # ここでは Chroma / retriever に触れない。
-        # つまり「no such table: collections」のような
-        # ベクターストア絡みのエラーを回避できる。
-        #
-        # chat_historyを踏まえてLLMに直接聞く。
-        # （SYSTEM_PROMPT_INQUIRYは「社内問い合わせ」用のルール）
-        #
-
-        inquiry_prompt = ChatPromptTemplate.from_messages(
-            [
-                ("system", ct.SYSTEM_PROMPT_INQUIRY),
-                MessagesPlaceholder("chat_history"),
-                ("human", "{input}"),
-            ]
-        )
-
-        # PromptTemplate を具体的なメッセージ列に展開する
-        # - MessagesPlaceholder("chat_history") には
-        #   st.session_state.chat_history (HumanMessage / AIMessage のリスト) が入る
-        messages_for_llm = inquiry_prompt.format_messages(
-            input=chat_message,
-            chat_history=st.session_state.chat_history,
-        )
-
-        try:
-            ai_message = llm.invoke(messages_for_llm)
-            answer_text = ai_message.content
-
-        except Exception as e:
-            logger.error(f"[社内問い合わせモード] LLM呼び出しに失敗しました: {e}")
-
-            answer_text = (
-                "【LLM呼び出しでエラーが発生しました（社内問い合わせモード）】\n"
-                "モデル呼び出し時にエラーが発生しました。\n"
-                f"詳細: {e}\n\n"
-                "考えられる原因:\n"
-                " - ct.MODEL のモデル名/権限の問題\n"
-                " - APIキーの制限やレートリミット\n"
-            )
-
-        # 会話履歴を更新（RAGなしなので context は返さない）
-        _update_chat_history(chat_message, answer_text)
-
-        return {
-            "answer": answer_text,
-            "context": [],
-        }
-
-
-def format_file_info(path: str, page_number: int | None = None) -> str:
-    """
-    参照元ドキュメントの表示用文字列を返す。
-    PDFのときだけ『（ページNo.X）』を付けて返す。
-
-    Args:
-        path: 参照元のファイルパス
-        page_number: PDFの場合はページ番号（1始まり想定）
-
-    Returns:
-        UI表示用のテキスト
-    """
-    if (
-        isinstance(path, str)
-        and path.lower().endswith(".pdf")
-        and page_number is not None
-    ):
-        return f"{path}（ページNo.{page_number}）"
-    return path
+                "answer": debug
