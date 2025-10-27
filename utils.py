@@ -12,7 +12,6 @@ import streamlit as st
 
 from langchain_openai import ChatOpenAI
 from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
-
 from langchain_core.messages import HumanMessage, AIMessage
 from langchain.chains import (
     create_history_aware_retriever,
@@ -44,13 +43,10 @@ def get_source_icon(source: str):
     Returns:
         メッセージと一緒に表示するアイコンの種類
     """
-    # 参照元がWebページの場合とファイルの場合で、取得するアイコンの種類を変える
     if isinstance(source, str) and source.startswith("http"):
-        icon = ct.LINK_SOURCE_ICON
+        return ct.LINK_SOURCE_ICON
     else:
-        icon = ct.DOC_SOURCE_ICON
-
-    return icon
+        return ct.DOC_SOURCE_ICON
 
 
 def build_error_message(message: str) -> str:
@@ -74,98 +70,66 @@ def get_llm_response(chat_message: str):
         chat_message: ユーザー入力値（テキスト）
 
     Returns:
-        llm_response: dict
-            例:
+        dict:
             {
-                "answer": "〜〜〜回答テキスト〜〜〜",
-                "context": [Document(...), Document(...), ...]
+                "answer": "...",
+                "context": [Document(...), ...]
             }
-
-        ※ "answer" と "context" は components.py 側で利用される想定
+        ※ components.py / main.py はこの形式を前提にしている
     """
 
     logger = logging.getLogger(ct.LOGGER_NAME)
 
-    # -----------------------------------------------------
-    # 1. LLMインスタンスの用意
-    #    ※ langchain-openai>=0.2.x では model_name ではなく model を使う
-    # -----------------------------------------------------
+    # 1. LLM本体の用意
+    #    langchain-openai>=0.2系では model_name ではなく model を使う
     llm = ChatOpenAI(
         model=ct.MODEL,
         temperature=ct.TEMPERATURE,
     )
 
-    # -----------------------------------------------------
-    # 2. 「会話履歴を踏まえても、単体で意味が通る質問文」を生成するプロンプト
-    #    → 会話のニュアンスを含んだ検索クエリを作るため
-    # -----------------------------------------------------
-    question_generator_template = ct.SYSTEM_PROMPT_CREATE_INDEPENDENT_TEXT
-    question_generator_prompt = ChatPromptTemplate.from_messages(
+    # 2. 「会話履歴を踏まえた検索クエリを作る」プロンプト
+    contextualize_q_prompt = ChatPromptTemplate.from_messages(
         [
-            ("system", question_generator_template),
+            ("system", ct.SYSTEM_PROMPT_CREATE_INDEPENDENT_TEXT),
             MessagesPlaceholder("chat_history"),
             ("human", "{input}"),
         ]
     )
 
-    # -----------------------------------------------------
-    # 3. 回答用プロンプト（モード別に system プロンプトを切り替える）
-    #    - 社内文書検索（根拠つき回答を重視）
-    #    - 社内問い合わせ（社内制度Q&A想定）
-    # -----------------------------------------------------
-    if st.session_state.mode == ct.ANSWER_MODE_1:
-        # モードが「社内文書検索」の場合のプロンプト
-        question_answer_template = ct.SYSTEM_PROMPT_DOC_SEARCH
-    else:
-        # モードが「社内問い合わせ」の場合のプロンプト
-        question_answer_template = ct.SYSTEM_PROMPT_INQUIRY
-
-    question_answer_prompt = ChatPromptTemplate.from_messages(
-        [
-            ("system", question_answer_template),
-            MessagesPlaceholder("chat_history"),
-            ("human", "{input}"),
-        ]
-    )
-
-    # -----------------------------------------------------
-    # 4. 会話履歴つきRetrieverの組み立て
-    #    - create_history_aware_retriever:
-    #        "過去のやりとり"＋"今回の質問" → 検索用のクエリをLLMで整形
-    #    - これにより st.session_state.retriever（Chroma経由）に
-    #      文脈に合った問い合わせが飛ぶ
-    # -----------------------------------------------------
+    # retriever（RAG用の検索器）に、会話履歴を考慮した検索クエリを渡すチェーン
     history_aware_retriever = create_history_aware_retriever(
         llm=llm,
         retriever=st.session_state.retriever,
-        prompt=question_generator_prompt,
+        prompt=contextualize_q_prompt,
     )
 
-    # -----------------------------------------------------
-    # 5. 取り出したドキュメントをもとに最終回答を作るチェーン
-    #    - create_stuff_documents_chain:
-    #        参照ドキュメントをまとめてLLMに渡し、回答文を組ませる
-    # -----------------------------------------------------
+    # 3. 回答生成用プロンプト（モードに応じて system を切り替える）
+    if st.session_state.mode == ct.ANSWER_MODE_1:
+        system_prompt = ct.SYSTEM_PROMPT_DOC_SEARCH
+    else:
+        system_prompt = ct.SYSTEM_PROMPT_INQUIRY
+
+    qa_prompt = ChatPromptTemplate.from_messages(
+        [
+            ("system", system_prompt),
+            MessagesPlaceholder("chat_history"),
+            ("human", "{input}"),
+        ]
+    )
+
+    # 4. 取得したドキュメントをまとめてLLMに渡して、回答文を組み立てるチェーン
     question_answer_chain = create_stuff_documents_chain(
         llm=llm,
-        prompt=question_answer_prompt,
+        prompt=qa_prompt,
     )
 
-    # -----------------------------------------------------
-    # 6. Retrievalと回答生成をまとめたRAGチェーン
-    #    - create_retrieval_chain:
-    #        (文脈対応retriever) → (回答生成チェーン)
-    # -----------------------------------------------------
+    # 5. (会話履歴を考慮したretriever)＋(回答生成チェーン) のRAGパイプライン
     rag_chain = create_retrieval_chain(
         history_aware_retriever,
         question_answer_chain,
     )
 
-    # -----------------------------------------------------
-    # 7. チェーン実行（LLM呼び出し）
-    #    LangChain 0.3系では chat_history に
-    #    HumanMessage / AIMessage のリストを渡すことが推奨
-    # -----------------------------------------------------
+    # 6. チェーン実行
     try:
         llm_response = rag_chain.invoke(
             {
@@ -173,35 +137,62 @@ def get_llm_response(chat_message: str):
                 "chat_history": st.session_state.chat_history,
             }
         )
-        # llm_response は典型的に:
+        # llm_response 例:
         # {
-        #   "answer": "<モデルの回答テキスト>",
+        #   "answer": "〜モデルが生成した回答〜",
         #   "context": [Document(...), ...]
         # }
 
+        # 会話履歴を更新（次回以降の文脈のため）
+        try:
+            st.session_state.chat_history.extend(
+                [
+                    HumanMessage(content=chat_message),
+                    AIMessage(content=llm_response.get("answer", "")),
+                ]
+            )
+        except Exception as hist_err:
+            logger.warning(f"chat_history 更新に失敗しました: {hist_err}")
+
+        return llm_response
+
     except Exception as e:
+        # ここに来る = OpenAIのチャットモデル呼び出しなどで失敗した
+        # 代表例:
+        #  - モデル名が無効 / 権限がない
+        #  - レート制限
+        #  - APIキー権限不足
         logger.error(f"LLM呼び出しに失敗しました: {e}")
-        # ここで例外を投げ直すことで main.py 側の try/except に捕まって
-        # 画面に「回答生成に失敗しました。」が出る
-        raise
 
-    # -----------------------------------------------------
-    # 8. 会話履歴を更新
-    #    - 次の質問時に、文脈を保持したままRetriever＆LLMに渡すため
-    #    - HumanMessage / AIMessage を積む
-    # -----------------------------------------------------
-    try:
-        st.session_state.chat_history.extend(
-            [
-                HumanMessage(content=chat_message),
-                AIMessage(content=llm_response["answer"]),
-            ]
+        # main.py 側に例外を投げると赤い帯しか出ないので、
+        # ここでは「エラー内容そのものをanswerとして返す」ことで
+        # 画面に可視化してデバッグしやすくする。
+        debug_answer = (
+            "【LLM呼び出しでエラーが発生しました】\n"
+            "おそらく OpenAI のチャットモデル呼び出し時のエラーです。\n"
+            f"詳細: {e}\n\n"
+            "考えられる原因:\n"
+            " - ct.MODEL のモデル名が現在のAPIキーで使えない\n"
+            " - 利用上限/レートリミットに達した\n"
+            " - モデル名のタイプミス\n"
         )
-    except Exception as e:
-        # 履歴の更新に失敗しても、回答自体は返す
-        logger.warning(f"chat_history 更新に失敗しました: {e}")
 
-    return llm_response
+        # 会話履歴にはエラーも一応残しておく（次の問い合わせは普通に通る可能性もある）
+        try:
+            st.session_state.chat_history.extend(
+                [
+                    HumanMessage(content=chat_message),
+                    AIMessage(content=debug_answer),
+                ]
+            )
+        except Exception as hist_err:
+            logger.warning(f"chat_history 更新に失敗しました(エラー時): {hist_err}")
+
+        # components.py 側が期待する形
+        return {
+            "answer": debug_answer,
+            "context": [],
+        }
 
 
 def format_file_info(path: str, page_number: int | None = None) -> str:
