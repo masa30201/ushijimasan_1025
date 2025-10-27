@@ -255,72 +255,95 @@ def display_search_llm_response(llm_response):
     
     return content
 
-
-def display_contact_llm_response(llm_response):
+def display_contact_llm_response(llm_response: dict) -> dict:
     """
-    「社内問い合わせ」モードにおけるLLMレスポンスを表示
+    「社内問い合わせ」モードでアシスタント側に表示する内容を組み立てて描画する。
+    utils.get_llm_response() が返す llm_response を前提にする。
 
-    Args:
-        llm_response: LLMからの回答
+    llm_response の想定形:
+        {
+            "answer": "モデルが返したテキスト（もしくはエラー詳細）",
+            "context": [Document(...), Document(...), ...]  # 通常は空だが将来拡張も想定
+        }
 
-    Returns:
-        LLMからの回答を画面表示用に整形した辞書データ
+    返り値:
+        content: dict
+            {
+                "mode": ct.ANSWER_MODE_2,
+                "answer": "<画面に表示した本文>",
+                "message": "<情報源の説明文>",            # 必要な場合のみ
+                "file_info_list": ["<情報源A>", ...]      # 必要な場合のみ
+            }
+        main.py 側ではこの dict が会話ログにも保存されるので、
+        ここでは従来の戻り値の形を維持する。
     """
-    # LLMからの回答を表示
-    st.markdown(llm_response["answer"])
 
-    # ユーザーの質問・要望に適切な回答を行うための情報が、社内文書のデータベースに存在しなかった場合
-    if llm_response["answer"] != ct.INQUIRY_NO_MATCH_ANSWER:
-        # 区切り線を表示
-        st.divider()
+    import streamlit as st
+    import constants as ct
+    from utils import format_file_info, get_source_icon  # 既存のユーティリティを再利用
 
-        # 補足メッセージを表示
-        message = "情報源"
-        st.markdown(f"##### {message}")
+    # 1. LLM本体の回答テキスト
+    #    - ここには通常の回答も入るし、エラー時は
+    #      "【LLM初期化エラー】詳細: ..." のようなデバッグ用メッセージも入る
+    answer_text = llm_response.get("answer", "")
+    if not answer_text:
+        answer_text = "（回答テキストが取得できませんでした）"
 
-        # 参照元のファイルパスの一覧を格納するためのリストを用意
-        file_path_list = []
-        file_info_list = []
+    # まず、ユーザー向けの本文としてそのまま表示する
+    st.markdown(answer_text)
 
-        # LLMが回答生成の参照元として使ったドキュメントの一覧が「context」内のリストの中に入っているため、ループ処理
-        for document in llm_response["context"]:
-            # ファイルパスを取得
-            file_path = document.metadata["source"]
-            # ファイルパスの重複は除去
-            if file_path in file_path_list:
-                continue
+    # 2. 関連ドキュメント(あれば)
+    #    問い合わせモードでは通常 RAG を使わない想定だけど、
+    #    utils 側が context を渡してくる場合に備えて表示できるようにしておく
+    context_docs = llm_response.get("context", [])
 
-            # ページ番号が取得できた場合のみ、ページ番号を表示（ドキュメントによっては取得できない場合がある）
-            if "page" in document.metadata:
-                # ページ番号を取得
-                page_number = document.metadata["page"]
-                # 「ファイルパス」と「ページ番号」
-                file_info = f"{file_path}"
-            else:
-                # 「ファイルパス」のみ
-                file_info = f"{file_path}"
+    file_info_list = []
+    message = ""
 
-            # 参照元のありかに応じて、適したアイコンを取得
-            icon = utils.get_source_icon(file_path)
-            # ファイル情報を表示
-            st.info(file_info, icon=icon)
+    if context_docs:
+        # 画面上に区切りと見出しを出す
+        st.markdown("---")
+        st.subheader("情報源")
 
-            # 重複チェック用に、ファイルパスをリストに順次追加
-            file_path_list.append(file_path)
-            # ファイル情報をリストに順次追加
-            file_info_list.append(file_info)
+        for doc in context_docs:
+            # Documentオブジェクト想定:
+            #   .metadata["source"]  …ファイルパス or URL
+            #   .metadata["page"]    …PDFのページ番号など
+            meta = getattr(doc, "metadata", {}) or {}
 
-    # 表示用の会話ログに格納するためのデータを用意
-    # - 「mode」: モード（「社内文書検索」or「社内問い合わせ」）
-    # - 「answer」: LLMからの回答
-    # - 「message」: 補足メッセージ
-    # - 「file_path_list」: ファイルパスの一覧リスト
-    content = {}
-    content["mode"] = ct.ANSWER_MODE_2
-    content["answer"] = llm_response["answer"]
-    # 参照元のドキュメントが取得できた場合のみ
-    if llm_response["answer"] != ct.INQUIRY_NO_MATCH_ANSWER:
-        content["message"] = message
-        content["file_info_list"] = file_info_list
+            raw_path = meta.get("source", "")
+            page_num = meta.get("page", None)
+
+            # UI表示用に整形（PDFなら「（ページNo.X）」を付ける）
+            pretty_path = format_file_info(raw_path, page_num)
+
+            # アイコン（リンク or ファイル）
+            icon = get_source_icon(raw_path)
+
+            # 画面に1件ずつ表示
+            st.markdown(f"{icon} {pretty_path}")
+
+            # 会話ログなどに残す用リストにも追加
+            file_info_list.append(pretty_path)
+
+        # ユーザー向けの補足メッセージ（ログにも残したいので文字列にしておく）
+        message = "参考として、関連する情報源の候補を表示しました。"
+
+    # 3. main.py 側／ログ側に渡す構造体を組み立てる
+    content = {
+        "mode": ct.ANSWER_MODE_2,
+        "answer": answer_text,
+    }
+
+    # 参照元のドキュメントやメッセージがある場合のみ追加
+    # もともとの実装では「マッチしなかった固定回答(ct.INQUIRY_NO_MATCH_ANSWER)のときは付けない」
+    # という条件があったので、それとできるだけ互換にしておく:
+    if answer_text != getattr(ct, "INQUIRY_NO_MATCH_ANSWER", None):
+        if message:
+            content["message"] = message
+        if file_info_list:
+            content["file_info_list"] = file_info_list
 
     return content
+
+
