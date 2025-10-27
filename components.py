@@ -45,7 +45,7 @@ def display_select_mode():
 
 def display_initial_ai_message():
     st.success(
-        "こんにちは。私は社内文書の情報をもとに回答する生成AIチャットボットです。"
+        "【修正中】こんにちは。私は社内文書の情報をもとに回答する生成AIチャットボットです。"
         "サイドバーで利用目的を選択し、画面下部のチャット欄からメッセージを送信してください。",
         icon=":material/home:"   # 家のアイコン
     )
