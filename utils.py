@@ -23,7 +23,9 @@ load_dotenv()
 
 
 def get_source_icon(source: str):
-    """メッセージと一緒に表示するアイコンの種類を取得"""
+    """
+    メッセージと一緒に表示するアイコンの種類を取得
+    """
     if isinstance(source, str) and source.startswith("http"):
         return ct.LINK_SOURCE_ICON
     else:
@@ -31,14 +33,16 @@ def get_source_icon(source: str):
 
 
 def build_error_message(message: str) -> str:
-    """エラーメッセージと管理者問い合わせテンプレートの連結"""
+    """
+    エラーメッセージと管理者問い合わせテンプレートの連結
+    """
     return "\n".join([message, ct.COMMON_ERROR_MESSAGE])
 
 
 def _update_chat_history(user_text: str, ai_text: str):
     """
-    chat_history を HumanMessage / AIMessage で更新する。
-    ここで失敗してもアプリ全体は止めない。
+    chat_history (LLMに渡す会話の文脈) を HumanMessage / AIMessage で更新する。
+    失敗してもアプリ自体は止めない。
     """
     logger = logging.getLogger(ct.LOGGER_NAME)
     try:
@@ -56,27 +60,32 @@ def get_llm_response(chat_message: str):
     """
     ユーザー入力(chat_message)に対する回答を生成する。
 
-    2つのモードで動作:
-    - ANSWER_MODE_1（社内文書検索）:
-        RAGあり（ベクターストア検索＋根拠表示）
-    - ANSWER_MODE_2（社内問い合わせ）:
-        RAGなし（LLMのみで回答）
+    両モードとも RAG（ベクターストア検索 + 参照文書をLLMに渡す）を使う。
+    ただし、LLMに渡すシステムプロンプトはモードによって切り替える。
 
-    常に dict を返す:
+    - ANSWER_MODE_1（社内文書検索）:
+        ct.SYSTEM_PROMPT_DOC_SEARCH を使う
+        → ファイル候補や根拠の提示に向いたスタイル
+    - ANSWER_MODE_2（社内問い合わせ）:
+        ct.SYSTEM_PROMPT_INQUIRY を使う
+        → 社内問い合わせの回答トーン・方針に向いたスタイル
+
+    返り値は常に:
         {
-            "answer": "...",
-            "context": [...]
+            "answer": "...",       # LLMの最終回答 or エラーメッセージ
+            "context": [Document, ...]  # retrieverが返したドキュメントのリスト（なければ空）
         }
 
-    ※ どんなエラーが起きても raise せず、"answer" に
-       デバッグ情報を書いた dict を返すようにする。
+    どんな場合も raise はしない。必ず上の dict を返す。
+    main.py 側はこの dict を前提に表示・ログ保存する。
     """
+
     logger = logging.getLogger(ct.LOGGER_NAME)
 
-    # 1. LLMインスタンスの準備（ここが失敗しがちなので try で囲む）
+    # 0. LLMインスタンスの準備
     try:
         llm = ChatOpenAI(
-            model=ct.MODEL,          # langchain-openai>=0.2系なら model= が正
+            model=ct.MODEL,          # langchain-openai>=0.2系では model= が正
             temperature=ct.TEMPERATURE,
         )
     except Exception as e:
@@ -87,8 +96,7 @@ def get_llm_response(chat_message: str):
             " - OPENAI_API_KEY が未設定 / 無効\n"
             " - ct.MODEL のモデル名にこのAPIキーでの権限がない\n"
             " - モデル名のタイプミス\n\n"
-            "詳細:\n"
-            "%s" % e
+            f"詳細:\n{e}"
         )
         _update_chat_history(chat_message, debug_answer)
         return {
@@ -96,141 +104,103 @@ def get_llm_response(chat_message: str):
             "context": [],
         }
 
-    # 2. 現在のモード取得
+    # 1. いまのモードを取得（サイドバーのラジオで選ばれている想定）
     mode = getattr(st.session_state, "mode", ct.ANSWER_MODE_1)
 
-    # =====================================================
-    # モードA: 社内文書検索 (RAGあり)
-    # =====================================================
-    if mode == ct.ANSWER_MODE_1:
-        # (a) 会話履歴を踏まえた検索クエリを作るためのプロンプト
-        contextualize_q_prompt = ChatPromptTemplate.from_messages(
-            [
-                ("system", ct.SYSTEM_PROMPT_CREATE_INDEPENDENT_TEXT),
-                MessagesPlaceholder("chat_history"),
-                ("human", "{input}"),
-            ]
-        )
+    # 2. プロンプトをモード別に組み立てる
+    #    - 「どんなふうに答えるべきか」を決める system プロンプトだけ差し替えるイメージ
+    if mode == ct.ANSWER_MODE_2:
+        # 社内問い合わせモード
+        answer_system_prompt_text = ct.SYSTEM_PROMPT_INQUIRY
+    else:
+        # デフォルトは社内文書検索モード扱い
+        answer_system_prompt_text = ct.SYSTEM_PROMPT_DOC_SEARCH
 
-        # (b) 会話履歴込み retriever の構築
-        try:
-            history_aware_retriever = create_history_aware_retriever(
-                llm=llm,
-                retriever=st.session_state.retriever,
-                prompt=contextualize_q_prompt,
-            )
-        except Exception as e:
-            debug_answer = (
-                "【RAG初期化エラー】\n"
-                "履歴付きRetrieverの構築に失敗しました。\n"
-                "考えられる原因:\n"
-                " - ベクターストア(Chroma)が未初期化/破損\n"
-                " - Chromaの永続ディレクトリが壊れている\n\n"
-                "詳細:\n"
-                "%s" % e
-            )
-            _update_chat_history(chat_message, debug_answer)
-            return {
-                "answer": debug_answer,
-                "context": [],
-            }
-
-        # (c) 回答用プロンプト（抜き出したドキュメントを根拠に回答させる）
-        question_answer_prompt = ChatPromptTemplate.from_messages(
-            [
-                ("system", ct.SYSTEM_PROMPT_DOC_SEARCH),
-                MessagesPlaceholder("chat_history"),
-                ("human", "{input}"),
-            ]
-        )
-
-        # (d) ドキュメントを渡して回答をまとめさせるチェーン
-        question_answer_chain = create_stuff_documents_chain(
-            llm=llm,
-            prompt=question_answer_prompt,
-        )
-
-        # (e) 「retriever → 回答生成」のRAGチェーン
-        rag_chain = create_retrieval_chain(
-            history_aware_retriever,
-            question_answer_chain,
-        )
-
-        # (f) 実行
-        try:
-            result = rag_chain.invoke(
-                {
-                    "input": chat_message,
-                    "chat_history": st.session_state.chat_history,
-                }
-            )
-            # result 例:
-            # {
-            #   "answer": "...LLMの回答テキスト...",
-            #   "context": [Document(...), ...]
-            # }
-            answer_text = result.get("answer", "")
-            _update_chat_history(chat_message, answer_text)
-            return result
-
-        except Exception as e:
-            debug_answer = (
-                "【LLM呼び出しでエラーが発生しました（RAGモード）】\n"
-                "内部の検索または回答生成処理でエラーが発生しました。\n"
-                "考えられる原因:\n"
-                " - ベクターストア(Chroma)の内部エラー/テーブル破損\n"
-                " - モデル呼び出しの権限・レート制限\n"
-                " - LangChain / Chroma のバージョン不整合\n\n"
-                "詳細:\n"
-                "%s" % e
-            )
-            _update_chat_history(chat_message, debug_answer)
-            return {
-                "answer": debug_answer,
-                "context": [],
-            }
-
-    # =====================================================
-    # モードB: 社内問い合わせ (RAGなし)
-    # =====================================================
-
-    # RAGを使わず、LLM単体で回答。
-    # retriever / Chroma に触らないので
-    # "no such table: collections" のようなChroma由来エラーは回避できる。
-    inquiry_prompt = ChatPromptTemplate.from_messages(
+    # 会話履歴を踏まえた検索クエリを作るためのプロンプト
+    contextualize_q_prompt = ChatPromptTemplate.from_messages(
         [
-            ("system", ct.SYSTEM_PROMPT_INQUIRY),
+            ("system", ct.SYSTEM_PROMPT_CREATE_INDEPENDENT_TEXT),
             MessagesPlaceholder("chat_history"),
             ("human", "{input}"),
         ]
     )
 
-    # PromptTemplate → 実際のメッセージ列に展開
-    messages_for_llm = inquiry_prompt.format_messages(
-        input=chat_message,
-        chat_history=st.session_state.chat_history,
+    # LLMに最終回答をまとめさせるプロンプト
+    question_answer_prompt = ChatPromptTemplate.from_messages(
+        [
+            ("system", answer_system_prompt_text),
+            MessagesPlaceholder("chat_history"),
+            ("human", "{input}"),
+        ]
     )
 
+    # 3. Retriever（Chromaなど）を、会話履歴込みで使えるようにする
     try:
-        ai_message = llm.invoke(messages_for_llm)
-        answer_text = ai_message.content
-    except Exception as e:
-        answer_text = (
-            "【LLM呼び出しでエラーが発生しました（社内問い合わせモード）】\n"
-            "モデル呼び出し時にエラーが発生しました。\n"
-            "考えられる原因:\n"
-            " - ct.MODEL のモデル名/権限の問題\n"
-            " - APIキーの制限やレートリミット\n\n"
-            "詳細:\n"
-            "%s" % e
+        history_aware_retriever = create_history_aware_retriever(
+            llm=llm,
+            retriever=st.session_state.retriever,
+            prompt=contextualize_q_prompt,
         )
+    except Exception as e:
+        debug_answer = (
+            "【RAG初期化エラー】\n"
+            "社内文書を検索するためのRetrieverを初期化できませんでした。\n"
+            "考えられる原因:\n"
+            " - ベクターストア(Chroma)が未初期化/破損\n"
+            " - Chromaの永続ディレクトリが壊れている\n\n"
+            f"詳細:\n{e}"
+        )
+        _update_chat_history(chat_message, debug_answer)
+        return {
+            "answer": debug_answer,
+            "context": [],
+        }
 
-    _update_chat_history(chat_message, answer_text)
+    # 4. ドキュメントをまとめて最終回答を作るチェーン
+    question_answer_chain = create_stuff_documents_chain(
+        llm=llm,
+        prompt=question_answer_prompt,
+    )
 
-    return {
-        "answer": answer_text,
-        "context": [],
-    }
+    # 5. 「(履歴付き)Retriever」→「回答生成」のRAGチェーンを組む
+    rag_chain = create_retrieval_chain(
+        history_aware_retriever,
+        question_answer_chain,
+    )
+
+    # 6. 実際にRAGチェーンを呼び出して回答を作る
+    try:
+        result = rag_chain.invoke(
+            {
+                "input": chat_message,
+                "chat_history": st.session_state.chat_history,
+            }
+        )
+        # LangChainのcreate_retrieval_chain()はだいたい:
+        # {
+        #   "answer": "...LLMの最終回答テキスト...",
+        #   "context": [Document(...), ...]
+        # }
+        answer_text = result.get("answer", "")
+        _update_chat_history(chat_message, answer_text)
+        return result
+
+    except Exception as e:
+        # retriever呼び出しやOpenAI呼び出しで落ちた場合
+        debug_answer = (
+            "【LLM呼び出しでエラーが発生しました】\n"
+            "内部の検索または回答生成処理でエラーが発生しました。\n"
+            "考えられる原因:\n"
+            " - ベクターストア(Chroma)の内部エラー/テーブル破損\n"
+            " - モデル呼び出しの権限・レート制限\n"
+            " - LangChain / Chroma のバージョン不整合\n\n"
+            f"詳細:\n{e}"
+        )
+        _update_chat_history(chat_message, debug_answer)
+        return {
+            "answer": debug_answer,
+            "context": [],
+        }
 
 
 def format_file_info(path: str, page_number: Optional[int] = None) -> str:
